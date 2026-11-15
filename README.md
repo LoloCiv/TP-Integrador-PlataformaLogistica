@@ -163,54 +163,44 @@ Todas las respuestas tienen el mismo formato: status + valores.
 Todos los `GET` de colecciones están **paginados** con `?limit=&offset=`: `limit` vale 20 por
 defecto (mínimo 1, máximo 100) y `offset` 0. Un valor fuera de rango responde 422.
 
-### Públicos (no necesitan token)
+La documentación interactiva de todos los endpoints está en `http://localhost:8000/docs`.
 
-Lista oficial: `RUTAS_PUBLICAS` en `app/middleware/auth.py`.
+### Quién puede usar cada endpoint
 
-| Método | Ruta | Para qué |
-|--------|------|----------|
-| `POST` | `/auth/login` | Obtener un token |
-| `POST` | `/clientes` | Registrarse como cliente |
-| `GET`  | `/productos`, `/productos/{id}` | Ver el catálogo |
-| `GET`  | `/depositos`, `/depositos/{id}`, `/depositos/{id}/productos` | Ver depósitos y sus productos |
-| `GET`  | `/health` | Estado de la API y la base |
-| `GET`  | `/docs`, `/openapi.json` | Documentación |
+Los privados necesitan el header `Authorization: Bearer <token>`. Sin token o con token
+inválido/vencido → **401**. Con token pero sin el rol pedido → **403**.
 
-### Privados (necesitan `Authorization: Bearer <token>`)
+| Acceso | Endpoints |
+|--------|-----------|
+| **Público** (sin token) | `POST /auth/login` · `POST /clientes` (registrarse) · `GET /productos`, `/productos/{id}` · `GET /depositos`, `/depositos/{id}`, `/depositos/{id}/productos` · `GET /health` · `/docs`, `/openapi.json` |
+| **Cualquier usuario logueado** | `GET /auth/yo` · `PATCH /auth/password` · `GET /clientes`, `/clientes/{id}`, `/clientes/{id}/ordenes` · `PATCH /clientes/{id}` · `GET`, `POST`, `PATCH`, `DELETE` de `/repartidores` · `GET`, `POST`, `PUT`, `PATCH`, `DELETE` de `/vehiculos` · `POST`, `PUT`, `PATCH`, `DELETE` de `/depositos` y `/productos` · `GET`, `POST`, `PATCH`, `DELETE` de `/inventario` · `GET /ordenes`, `/ordenes/{id}` · `PATCH /ordenes/{id}/asignar` · `PATCH /ordenes/{id}/cancelar` |
+| **Solo cliente** | `POST /ordenes`: la orden queda a nombre del dueño del token |
+| **Solo repartidor** | `PATCH /rutas/{id}/iniciar` (solo su ruta) · `PATCH /ordenes/{id}/estado` (solo órdenes de su ruta) · `PUT /tracking` (su propia posición) |
+| **WebSocket** (token en la URL) | `ws://localhost:8000/tracking/{id_orden}?token=...`: un cliente solo sus órdenes, un repartidor solo las de sus rutas |
 
-Sin token o con token inválido/vencido → **401**. Con token pero sin el rol pedido → **403**.
-
-| Recurso | GET (lista paginada / uno) | POST | PUT | PATCH | DELETE |
-|---------|:-:|:-:|:-:|:-:|:-:|
-| `/auth` | `GET /auth/yo` | — | — | `/auth/password` | — |
-| `/clientes` | ✓ (+ `/clientes/{id}/ordenes`) | público | — | ✓ | — |
-| `/repartidores` | ✓ | ✓ | — | ✓ | ✓ |
-| `/vehiculos` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `/depositos` | público | ✓ | ✓ | ✓ | ✓ |
-| `/productos` | público | ✓ | ✓ | ✓ | ✓ |
-| `/inventario` | ✓ | ✓ | — | ✓ | ✓ |
-| `/ordenes` | ✓ | ✓ 🔒 cliente | — | ver abajo | — |
-| `/rutas` | — | — | — | ver abajo | — |
-| `/tracking` | — | — | ✓ 🔒 repartidor | — | — |
-
-Acciones sobre órdenes y rutas (todas `PATCH`, porque modifican parte de algo que ya existe):
-
-| Ruta | Qué hace | Rol |
-|------|----------|-----|
-| `PATCH /ordenes/{id}/asignar` | Asigna repartidor y vehículo → `CONFIRMADA` y publica el cálculo de ruta | cualquier usuario logueado |
-| `PATCH /rutas/{id}/iniciar` | El repartidor sale: **todas** las órdenes `CONFIRMADA` de la ruta pasan juntas a `EN_CAMINO` | 🔒 repartidor (solo su ruta) |
-| `PATCH /ordenes/{id}/estado` | `EN_CAMINO → ENTREGADA`, de a una orden | 🔒 repartidor (solo órdenes de su ruta) |
-| `PATCH /ordenes/{id}/cancelar` | Cancela (solo desde `PENDIENTE` o `CONFIRMADA`) y devuelve el stock | cualquier usuario logueado |
-
-El paso a `EN_CAMINO` es por ruta y no por orden a propósito: si las órdenes salieran de a una, la
-ruta seguiría "abierta", una orden nueva podría sumarse y el recálculo pisaría las paradas de un
-recorrido que ya arrancó.
+La lista de públicos está en `RUTAS_PUBLICAS` (`app/middleware/auth.py`); los roles se piden con
+`requiere_rol` en cada endpoint.
 
 Otras reglas de acceso:
 - `GET /clientes/{id}/ordenes`: un cliente solo puede ver **su** historial (si no → 403).
 - Donde no hay PUT (`repartidores`, `inventario`, `clientes`) es a propósito: o la contraseña
   tiene su propio camino (`PATCH /auth/password`) o hay un solo campo modificable, y PUT y PATCH
   serían lo mismo.
+
+### Acciones sobre órdenes y rutas
+
+Son todas `PATCH`, porque modifican parte de algo que ya existe:
+
+| Ruta | Qué hace |
+|------|----------|
+| `PATCH /ordenes/{id}/asignar` | Asigna repartidor y vehículo → `CONFIRMADA`, y publica el cálculo de ruta en Redis |
+| `PATCH /rutas/{id}/iniciar` | El repartidor sale: **todas** las órdenes `CONFIRMADA` de la ruta pasan juntas a `EN_CAMINO` |
+| `PATCH /ordenes/{id}/estado` | `EN_CAMINO → ENTREGADA`, de a una orden |
+| `PATCH /ordenes/{id}/cancelar` | Cancela (solo desde `PENDIENTE` o `CONFIRMADA`) y devuelve el stock |
+
+El paso a `EN_CAMINO` es por ruta y no por orden a propósito: si las órdenes salieran de a una, la
+ruta seguiría "abierta", una orden nueva podría sumarse y el recálculo pisaría las paradas de un
+recorrido que ya arrancó.
 
 ### Login
 
