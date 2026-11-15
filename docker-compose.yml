@@ -1,0 +1,55 @@
+name: logistica
+
+services:
+
+  # Postgres
+  db:
+    image: postgres:16
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # El backend espera a que Postgres esté listo para conectarse
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+    networks:
+      - red-logistica
+
+  # Redis: la cola de mensajes entre el backend y el microservicio
+  redis:
+    image: redis:7
+    networks:
+      - red-logistica
+
+  # La API, construida con el Dockerfile de esta carpeta
+  backend:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Monta el código para que --reload tome los cambios sin rebuild
+    volumes:
+      - .:/code
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - red-logistica
+
+  # El microservicio; si se cae, se reinicia solo
+  rutas:
+    build: ./rutas
+    env_file: .env
+    restart: unless-stopped
+    networks:
+      - red-logistica
+
+volumes:
+  pgdata:
+
+networks:
+  red-logistica:
