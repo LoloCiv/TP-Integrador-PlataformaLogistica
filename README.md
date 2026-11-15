@@ -322,3 +322,13 @@ Con el stack levantado:
 ├── requirements.txt
 └── .env.example
 ```
+
+## 9. Plan de mejora
+
+| Hoy | Mejora |
+|---|---|
+| No hay rol administrador: cualquier usuario logueado puede modificar repartidores, vehículos, productos, depósitos, inventario y otros clientes, y cancelar cualquier orden | Agregar un rol `admin` y proteger esos endpoints con `requiere_rol("admin")`. Que cada cliente solo pueda modificar su cuenta y cancelar sus propias órdenes |
+| El microservicio escribe directo en la misma base que el backend, así que los dos quedan acoplados al mismo esquema y no se cumple que cada servicio sea dueño de sus datos | Que el microservicio devuelva la ruta optimizada por otra cola de Redis y que el backend sea el único que la guarde en la base |
+| El microservicio hace `BRPOP`: si se cae justo después de sacar un mensaje, ese mensaje se pierde | Mover el mensaje a una lista "en proceso" (`BLMOVE`) y borrarlo recién cuando se procesó, o usar Redis Streams con confirmación |
+| Una orden `CONFIRMADA` no se puede reasignar: si el repartidor se enferma o se da de baja, hay que cancelarla y crear otra | Endpoint de reasignación que saque la orden de su ruta (y la republique si le quedan órdenes), valide como `asignar` y la meta en la ruta del nuevo repartidor, sin tocar el stock |
+| Cada orden sale de un solo depósito | Permitir órdenes con productos de varios depósitos, con una parada de retiro por cada uno |
