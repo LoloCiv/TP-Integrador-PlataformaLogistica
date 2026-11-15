@@ -68,8 +68,12 @@ def cambiar_estado(
     return respuesta_ok(OrdenSalida.model_validate(orden))
 
 
-# Cancela y devuelve el stock
-@router.patch("/{id_orden}/cancelar")
-def cancelar_orden(id_orden: int, gestor: GestorPedidos = Depends(obtener_gestor)):
-    orden = gestor.cancelar_orden(id_orden)
+# Cancela y devuelve el stock. Solo el cliente dueño de la orden
+@router.patch("/{id_orden}/cancelar", dependencies=[Depends(requiere_rol("cliente"))])
+def cancelar_orden(
+    id_orden: int,
+    usuario: Usuario = Depends(usuario_actual),
+    gestor: GestorPedidos = Depends(obtener_gestor),
+):
+    orden = gestor.cancelar_orden(id_orden, usuario.id_usuario)
     return respuesta_ok(OrdenSalida.model_validate(orden))

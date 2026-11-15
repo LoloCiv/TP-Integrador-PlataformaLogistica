@@ -100,8 +100,12 @@ class GestorPedidos:
         return orden
 
     # Solo antes de salir (PENDIENTE o CONFIRMADA). Devuelve el stock
-    def cancelar_orden(self, id_orden: int) -> Orden:
+    def cancelar_orden(self, id_orden: int, id_cliente: int | None = None) -> Orden:
         orden = self.get_orden_by_id(id_orden)
+
+        # Si viene un cliente, la orden tiene que ser suya
+        if id_cliente is not None and orden.id_cliente != id_cliente:
+            raise ValueError(f"La orden {id_orden} no es del cliente {id_cliente}")
 
         if orden.estado_orden in [EstadoOrden.EN_CAMINO, EstadoOrden.ENTREGADA, EstadoOrden.CANCELADA]:
             raise ValueError(f"No se puede cancelar una orden {orden.estado_orden}")

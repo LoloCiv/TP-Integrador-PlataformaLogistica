@@ -4,9 +4,12 @@ from mensajes import Coordenada, MensajeRuta
 from optimizador import OptimizadorRutas, RutaOptimizador
 from procesador import ProcesadorRutas
 
+# El depósito siempre es la primera parada del mensaje
 DEPOSITO = Coordenada(0, 0)
 
 
+# Numera cada orden según el recorrido optimizado y guarda distancia y tiempo.
+# El repositorio es un Mock, así que no hace falta base
 def test_numera_paradas():
     mensaje = MensajeRuta(orden_ids=[10, 20, 30],
                           paradas=[DEPOSITO, Coordenada(3, 3), Coordenada(2, 2), Coordenada(1, 1)])
@@ -19,6 +22,8 @@ def test_numera_paradas():
     )
 
 
+# Con un optimizador falso que invierte las entregas, el procesador numera según lo que devuelve:
+# depende de la interfaz RutaOptimizador y no de la implementación
 def test_optimizador_mock():
     optimizador = Mock(spec=RutaOptimizador)
     optimizador.optimizar.side_effect = lambda puntos: [puntos[0]] + puntos[1:][::-1]

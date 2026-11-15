@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.core.security import crear_token
 from app.middleware.auth import AuthMiddleware, es_publica
 
+# App mínima con solo el middleware de auth: una ruta pública y una privada
 app_prueba = FastAPI()
 app_prueba.add_middleware(AuthMiddleware)
 
@@ -22,10 +23,12 @@ def listar_ordenes(request: Request):
 cliente = TestClient(app_prueba)
 
 
+# Una ruta pública responde sin token
 def test_publica():
     assert cliente.get("/productos/5").status_code == 200
 
 
+# Sin header, sin 'Bearer', con token inventado o vencido: siempre 401
 @pytest.mark.parametrize("header", [
     None,
     crear_token(7, "cliente"),
@@ -38,6 +41,7 @@ def test_privada_sin_token_valido(header):
     assert cliente.get("/ordenes", headers=headers).status_code == 401
 
 
+# Con un token válido pasa, y el middleware deja el usuario en request.state
 def test_token_valido():
     respuesta = cliente.get("/ordenes", headers={"Authorization": f"Bearer {crear_token(7, 'cliente')}"})
 
@@ -46,6 +50,7 @@ def test_token_valido():
     assert respuesta.json()["usuario"]["rol"] == "cliente"
 
 
+# es_publica compara método y ruta: no alcanza con que la ruta empiece igual
 def test_es_publica():
     assert es_publica("GET", "/productos") is True
     assert es_publica("GET", "/productos/5") is True

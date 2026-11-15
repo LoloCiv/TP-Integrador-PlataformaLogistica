@@ -4,12 +4,15 @@ import pytest
 
 from app.models import DetalleOrden, Inventario, Orden
 
+# Todos los tests del archivo son async
 pytestmark = pytest.mark.anyio
 
+# Datos de un cliente de prueba
 ANA = {"nombre": "Ana", "apellido": "Paz", "user_name": "ana", "password": "secreta123",
        "direccion": "Malabia 100", "telefono": "1144556677", "dni": "30111222"}
 
 
+# Crea el cliente, hace login y devuelve su id y el header con el token
 async def registrar_y_login(cliente, datos=ANA):
     respuesta = await cliente.post("/clientes", json=datos)
     token = (await cliente.post("/auth/login", json={"user_name": datos["user_name"],
@@ -17,6 +20,7 @@ async def registrar_y_login(cliente, datos=ANA):
     return respuesta.json()["data"]["id_usuario"], {"Authorization": f"Bearer {token}"}
 
 
+# Crea un depósito, un producto y su inventario
 async def cargar_catalogo(cliente, headers, stock=100):
     await cliente.post("/depositos", headers=headers,
                        json={"nombre": "Central", "direccion": "A", "latitud": -34.6, "longitud": -58.4})
@@ -27,17 +31,20 @@ async def cargar_catalogo(cliente, headers, stock=100):
     return id_producto
 
 
+# Body de una orden con un solo producto
 def orden(id_producto, cantidad):
     return {"direccion_entrega": "Malabia 100", "latitud": -34.59, "longitud": -58.42,
             "detalles": [{"id_producto": id_producto, "cantidad": cantidad}]}
 
 
+# /health responde y confirma que la base está conectada
 async def test_health(cliente):
     respuesta = await cliente.get("/health")
 
     assert respuesta.json() == {"status": 200, "data": {"api": "ok", "db": "ok"}}
 
 
+# Login correcto devuelve el token con el rol; con la contraseña mal, 401
 async def test_login(cliente):
     await cliente.post("/clientes", json=ANA)
 
@@ -49,6 +56,7 @@ async def test_login(cliente):
     assert mal.status_code == 401
 
 
+# POST /ordenes guarda la orden y el detalle, y descuenta el stock en Postgres
 async def test_crear_orden(cliente, db):
     _, headers = await registrar_y_login(cliente)
     id_producto = await cargar_catalogo(cliente, headers, stock=100)
@@ -63,6 +71,7 @@ async def test_crear_orden(cliente, db):
     assert db.query(Inventario).filter_by(id_producto=id_producto).one().stock_actual == 70
 
 
+# Ana ve su historial; otro cliente que pide el de Ana recibe 403
 async def test_historial(cliente):
     id_ana, headers_ana = await registrar_y_login(cliente)
     id_producto = await cargar_catalogo(cliente, headers_ana)
@@ -78,6 +87,8 @@ async def test_historial(cliente):
     assert ajeno.status_code == 403
 
 
+# Dos órdenes asignadas a Juan quedan en la misma ruta. Un cliente no puede iniciarla (403);
+# Juan sí, y las dos pasan a EN_CAMINO
 async def test_iniciar_ruta(cliente):
     _, headers_ana = await registrar_y_login(cliente)
     id_producto = await cargar_catalogo(cliente, headers_ana)

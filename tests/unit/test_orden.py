@@ -3,6 +3,7 @@ from decimal import Decimal
 from app.models import DetalleOrden, Orden, Producto
 
 
+# El total se recalcula al agregar cada detalle
 def test_total():
     orden = Orden(direccion_entrega="Calle 1")
     assert orden.calcular_total() == Decimal("0")
@@ -13,6 +14,7 @@ def test_total():
     assert orden.total == Decimal("35")
 
 
+# Al sacar un detalle, el total se recalcula sin él
 def test_remover():
     orden = Orden(direccion_entrega="Calle 1")
     detalle1 = DetalleOrden(cantidad=2, precio_unitario=Decimal("10"))
@@ -26,6 +28,7 @@ def test_remover():
     assert orden.total == Decimal("5")
 
 
+# Peso = suma de cantidad × peso de cada producto (2 × 1.5 + 4 × 0.5 = 5)
 def test_peso():
     orden = Orden(direccion_entrega="Calle 1")
     harina = Producto(nombre="Harina", peso=Decimal("1.5"), precio=Decimal("10"))

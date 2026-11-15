@@ -12,9 +12,12 @@ from app.db import Base, get_db
 from app.main import app
 from app.models import Cliente, Orden, Repartidor, Ruta, Vehiculo
 
+# Ids que genera la base, para usarlos en los tests
 ids = {}
 
 
+# Base SQLite en memoria con dos clientes (Ana y Beto). Cada uno tiene una orden EN_CAMINO
+# en la ruta de su repartidor (Juan y Pedro)
 @pytest.fixture
 def cliente_http():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -50,16 +53,19 @@ def cliente_http():
     app.dependency_overrides.clear()
 
 
+# Abre el WebSocket de la orden de Ana con el token del cliente indicado
 def mirar(cliente_http, quien):
     return cliente_http.websocket_connect(f"/tracking/{ids['orden_ana']}?token={crear_token(ids[quien], 'cliente')}")
 
 
+# El repartidor indicado manda su posición con PUT /tracking
 def mover(cliente_http, quien, latitud, longitud):
     token = crear_token(ids[quien], "repartidor")
     return cliente_http.put("/tracking", json={"latitud": latitud, "longitud": longitud},
                             headers={"Authorization": f"Bearer {token}"})
 
 
+# Ana recibe la posición que manda su repartidor
 def test_recibe_posicion(cliente_http):
     with mirar(cliente_http, "ana") as websocket:
         assert mover(cliente_http, "juan", -34.6, -58.4).status_code == 200
@@ -70,6 +76,7 @@ def test_recibe_posicion(cliente_http):
     assert Decimal(mensaje["latitud"]) == Decimal("-34.6")
 
 
+# La posición de otro repartidor no le llega a Ana: lo primero que recibe es la de Juan
 def test_no_filtra(cliente_http):
     with mirar(cliente_http, "ana") as websocket:
         mover(cliente_http, "pedro", -31.4, -64.2)
@@ -80,6 +87,7 @@ def test_no_filtra(cliente_http):
     assert mensaje["id_repartidor"] == ids["juan"]
 
 
+# Beto no puede mirar la orden de Ana: la conexión se cierra con 1008
 def test_orden_ajena(cliente_http):
     with pytest.raises(WebSocketDisconnect) as error:
         with mirar(cliente_http, "beto") as websocket:
@@ -88,6 +96,7 @@ def test_orden_ajena(cliente_http):
     assert error.value.code == 1008
 
 
+# Un cliente no puede mandar posiciones: 403
 def test_put_cliente(cliente_http):
     token = crear_token(ids["ana"], "cliente")
     respuesta = cliente_http.put("/tracking", json={"latitud": 0, "longitud": 0}, headers={"Authorization": f"Bearer {token}"})

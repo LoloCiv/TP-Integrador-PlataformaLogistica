@@ -4,6 +4,7 @@ from app.models import Vehiculo
 from app.models.enums import EstadoVehiculo
 
 
+# Al pasar a MANTENIMIENTO deja de estar disponible
 def test_cambiar_estado():
     vehiculo = Vehiculo(estado_vehiculo=EstadoVehiculo.DISPONIBLE)
     assert vehiculo.esta_disponible() is True
@@ -14,6 +15,7 @@ def test_cambiar_estado():
     assert vehiculo.esta_disponible() is False
 
 
+# Un estado que no existe da error y no cambia nada
 def test_estado_invalido():
     vehiculo = Vehiculo(estado_vehiculo=EstadoVehiculo.DISPONIBLE)
 

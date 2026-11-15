@@ -1,12 +1,14 @@
 from app.models import Cliente
 
 
+# Cliente con la contraseña ya hasheada
 def crear_usuario(password: str = "secreta123") -> Cliente:
     usuario = Cliente(user_name="ana")
     usuario.cambiar_password(password)
     return usuario
 
 
+# La contraseña se guarda con bcrypt y nunca en texto plano. La misma clave da hashes distintos (salt)
 def test_hash():
     usuario = crear_usuario("secreta123")
     otro = crear_usuario("secreta123")
@@ -16,6 +18,7 @@ def test_hash():
     assert usuario.password != otro.password
 
 
+# Valida usuario y contraseña juntos
 def test_credenciales():
     usuario = crear_usuario("secreta123")
 
@@ -24,6 +27,7 @@ def test_credenciales():
     assert usuario.validar_credenciales("secreta123", "otro_usuario") is False
 
 
+# Después de cambiarla sirve la nueva y no la vieja
 def test_cambiar_password():
     usuario = crear_usuario("vieja123")
 

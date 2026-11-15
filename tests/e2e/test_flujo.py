@@ -1,3 +1,4 @@
+# Test de punta a punta contra los contenedores levantados (backend, Postgres, Redis y rutas)
 import time
 from uuid import uuid4
 
@@ -7,14 +8,18 @@ import pytest
 URL = "http://localhost:8000"
 
 
+# Carga todo por la API, asigna la orden y espera a que el microservicio le ponga el número de parada.
+# Usa un sufijo al azar para no chocar con datos que ya estén en la base
 def test_flujo():
     sufijo = uuid4().hex[:8]
     cliente_http = httpx.Client(base_url=URL, timeout=10)
+    # Si el backend no está levantado, el test se saltea
     try:
         cliente_http.get("/health")
     except httpx.ConnectError:
         pytest.skip("El backend no está levantado")
 
+    # POST que falla si la respuesta no es 2xx y devuelve el data
     def post(ruta, **kwargs):
         respuesta = cliente_http.post(ruta, **kwargs)
         respuesta.raise_for_status()
@@ -39,11 +44,13 @@ def test_flujo():
 
     id_orden = post("/ordenes", json={"direccion_entrega": "Malabia 100", "latitud": -34.59, "longitud": -58.42,
                                       "detalles": [{"id_producto": id_producto, "cantidad": 1}]})["id_orden"]
+    # Recién creada todavía no tiene número de parada
     assert cliente_http.get(f"/ordenes/{id_orden}").json()["data"]["nro_parada"] is None
 
     respuesta = cliente_http.patch(f"/ordenes/{id_orden}/asignar", json={"id_repartidor": id_repartidor, "id_vehiculo": id_vehiculo})
     respuesta.raise_for_status()
 
+    # El microservicio trabaja aparte: se consulta cada medio segundo, hasta 10 segundos
     nro_parada = None
     for _ in range(20):
         nro_parada = cliente_http.get(f"/ordenes/{id_orden}").json()["data"]["nro_parada"]

@@ -13,6 +13,7 @@ from app.services.cola_mensajes import ColaMensajes
 from app.services.gestor_pedidos import GestorPedidos
 
 
+# Cola de prueba: guarda los mensajes en una lista en vez de mandarlos a Redis
 class ColaFalsa(ColaMensajes):
     def __init__(self):
         self.mensajes = []
@@ -21,6 +22,7 @@ class ColaFalsa(ColaMensajes):
         self.mensajes.append(mensaje)
 
 
+# Base SQLite en memoria, nueva para cada test
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://")
@@ -30,16 +32,20 @@ def db():
     sesion.close()
 
 
+# Una cola falsa por test, para revisar qué se publicó
 @pytest.fixture
 def cola():
     return ColaFalsa()
 
 
+# El gestor real con la base de prueba y la cola falsa (inyección de dependencias)
 @pytest.fixture
 def gestor(db, cola):
     return GestorPedidos(db, cola)
 
 
+# Datos de base: dos depósitos con un producto cada uno, tres repartidores (uno INACTIVO)
+# y una moto de 20 kg y una camioneta de 600 kg, las dos de Juan
 @pytest.fixture
 def escenario(db):
     central = Deposito(nombre="Central", direccion="A", latitud=Decimal("-34.6"), longitud=Decimal("-58.4"))
@@ -72,11 +78,13 @@ def escenario(db):
     return datos
 
 
+# Arma el body de una orden a partir de pares (producto, cantidad)
 def pedido(*items, latitud="-34.59", longitud="-58.42"):
     return OrdenCrear(direccion_entrega="x", latitud=Decimal(latitud), longitud=Decimal(longitud),
                       detalles=[{"id_producto": producto.id_producto, "cantidad": cantidad} for producto, cantidad in items])
 
 
+# Crear una orden calcula el total, la deja PENDIENTE y descuenta el stock
 def test_crear_orden(gestor, escenario):
     orden = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 50)))
 
@@ -85,6 +93,7 @@ def test_crear_orden(gestor, escenario):
     assert escenario.dulce.inventario.stock_actual == 50
 
 
+# El detalle guarda el precio del momento: si después cambia el del producto, la orden no cambia
 def test_foto_precio(gestor, escenario, db):
     orden = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 10)))
 
@@ -94,6 +103,7 @@ def test_foto_precio(gestor, escenario, db):
     assert orden.detalles[0].precio_unitario == Decimal("100")
 
 
+# Productos de distintos depósitos o sin stock suficiente: error, y el stock queda igual
 def test_reglas(gestor, escenario):
     with pytest.raises(ValueError, match="mismo depósito"):
         gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 1), (escenario.harina, 1)))
@@ -103,6 +113,8 @@ def test_reglas(gestor, escenario):
     assert escenario.dulce.inventario.stock_actual == 100
 
 
+# No se puede saltear estados: PENDIENTE → CONFIRMADA → EN_CAMINO → ENTREGADA.
+# Una orden entregada ya no se puede cancelar
 def test_flujo_estados(gestor, escenario):
     orden = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 1)))
     with pytest.raises(ValueError):
@@ -120,6 +132,7 @@ def test_flujo_estados(gestor, escenario):
         gestor.cancelar_orden(orden.id_orden)
 
 
+# Cancelar devuelve el stock. Cancelar dos veces falla y no lo devuelve de nuevo
 def test_cancelar(gestor, escenario):
     orden = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 30)))
 
@@ -132,6 +145,7 @@ def test_cancelar(gestor, escenario):
     assert escenario.dulce.inventario.stock_actual == 100
 
 
+# Una orden EN_CAMINO no se puede cancelar y el stock sigue descontado
 def test_cancelar_en_camino(gestor, escenario):
     orden = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 30)))
     gestor.asignar_repartidor(orden.id_orden, escenario.juan.id_repartidor, escenario.camioneta.id_vehiculo)
@@ -144,6 +158,7 @@ def test_cancelar_en_camino(gestor, escenario):
     assert escenario.dulce.inventario.stock_actual == 70
 
 
+# Asignar confirma la orden y publica un mensaje: primero el depósito y después la entrega
 def test_asignar(gestor, cola, escenario):
     orden = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 10)))
 
@@ -156,6 +171,7 @@ def test_asignar(gestor, cola, escenario):
     assert paradas == [(-34.6, -58.4), (-34.59, -58.42)]
 
 
+# Dos órdenes con el mismo repartidor y vehículo van a la misma ruta, que se republica con las dos
 def test_misma_ruta(gestor, cola, escenario):
     orden_1 = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 1)))
     orden_2 = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 1), latitud="-34.62"))
@@ -167,6 +183,8 @@ def test_misma_ruta(gestor, cola, escenario):
     assert cola.mensajes[-1].orden_ids == [orden_1.id_orden, orden_2.id_orden]
 
 
+# Capacidad superada, repartidor no disponible o vehículo de otro repartidor:
+# error, la orden sigue PENDIENTE y no se publica nada
 @pytest.mark.parametrize("repartidor, vehiculo, error", [
     ("juan", "moto", "capacidad"),
     ("inactivo", "camioneta", "disponible"),
@@ -183,6 +201,9 @@ def test_asignar_invalido(gestor, cola, escenario, repartidor, vehiculo, error):
     assert cola.mensajes == []
 
 
+# Iniciar saca juntas las órdenes CONFIRMADA de la ruta y ocupa al repartidor y al vehículo.
+# Mientras está EN_RUTA no puede salir con otra ruta. Al entregar la última quedan libres,
+# y una orden nueva ya arma otra ruta
 def test_iniciar_ruta(gestor, escenario):
     orden_1 = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 1)))
     orden_2 = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 1), latitud="-34.62"))
@@ -209,6 +230,7 @@ def test_iniciar_ruta(gestor, escenario):
     assert orden_3.id_ruta != orden_1.id_ruta
 
 
+# Otro repartidor no puede iniciar la ruta, y una ruta que ya salió no se inicia de nuevo
 def test_iniciar_ruta_invalida(gestor, escenario):
     orden = gestor.crear_orden(escenario.cliente, pedido((escenario.dulce, 1)))
     gestor.asignar_repartidor(orden.id_orden, escenario.juan.id_repartidor, escenario.camioneta.id_vehiculo)

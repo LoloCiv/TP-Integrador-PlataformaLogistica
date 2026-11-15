@@ -1,3 +1,5 @@
+# Tests de integración: usan un Postgres real (una base aparte, <nombre>_test),
+# así que necesitan el contenedor db levantado
 import pytest
 from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
@@ -11,10 +13,12 @@ from app.main import app
 from app.services.cola_mensajes import ColaMensajes
 from app.services.gestor_pedidos import GestorPedidos
 
+# Base de los tests, en el mismo servidor que la base real
 BASE_TEST = f"{settings.postgres_db}_test"
 SERVIDOR = settings.database_url.rsplit("/", 1)[0]
 
 
+# Cola de prueba: guarda los mensajes en vez de mandarlos a Redis
 class ColaFalsa(ColaMensajes):
     def __init__(self):
         self.mensajes = []
@@ -23,6 +27,7 @@ class ColaFalsa(ColaMensajes):
         self.mensajes.append(mensaje)
 
 
+# Una vez por corrida: crea la base de test si no existe y arma las tablas de cero
 @pytest.fixture(scope="session")
 def engine():
     admin = create_engine(f"{SERVIDOR}/postgres", isolation_level="AUTOCOMMIT")
@@ -38,11 +43,14 @@ def engine():
     engine.dispose()
 
 
+# Los tests son async y corren con asyncio
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
 
 
+# Cliente HTTP contra la app real, con la base de test y la cola falsa.
+# Al terminar cada test vacía todas las tablas
 @pytest.fixture
 async def cliente(engine):
     Sesion = sessionmaker(bind=engine)
@@ -66,6 +74,7 @@ async def cliente(engine):
         conn.execute(text(f"TRUNCATE {tablas} RESTART IDENTITY CASCADE"))
 
 
+# Sesión para revisar directamente en la base lo que hizo la API
 @pytest.fixture
 def db(engine):
     sesion = sessionmaker(bind=engine)()

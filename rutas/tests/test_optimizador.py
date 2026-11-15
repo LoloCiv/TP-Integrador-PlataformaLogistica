@@ -2,6 +2,8 @@ from mensajes import Coordenada
 from optimizador import OptimizadorRutas, distancia_km
 
 
+# Vecino más cercano: desde el depósito va siempre al punto pendiente más cerca.
+# La lista original no se modifica
 def test_vecino_cercano():
     optimizador = OptimizadorRutas()
     puntos = [Coordenada(0, 0), Coordenada(3, 3), Coordenada(1, 1), Coordenada(2, 2)]
@@ -12,6 +14,7 @@ def test_vecino_cercano():
     assert [(punto.latitud, punto.longitud) for punto in puntos] == [(0, 0), (3, 3), (1, 1), (2, 2)]
 
 
+# La distancia total es la suma de los tramos, y el tiempo se estima a 30 km/h (15 km → 30 min)
 def test_distancia_tiempo():
     optimizador = OptimizadorRutas()
     origen, destino = Coordenada(0, 0), Coordenada(1, 1)
@@ -23,6 +26,7 @@ def test_distancia_tiempo():
     assert optimizador.estimar_tiempo() == 30
 
 
+# Con distancia 0, el tiempo estimado es como mínimo 1 minuto
 def test_tiempo_minimo():
     optimizador = OptimizadorRutas()
 
