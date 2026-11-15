@@ -125,13 +125,6 @@ Todos los comandos se corren desde la raíz del repositorio (donde está `docker
 | `backend`| Se construye con `Dockerfile` (base `python:3.12-slim`) |
 | `rutas`  | Se construye con `rutas/Dockerfile` (base `python:3.12-slim`) |
 
-No hace falta descargar ni entregar imágenes: `docker compose up --build` baja las oficiales y
-construye las otras dos a partir del código.
-
-En desarrollo, el `backend` monta la carpeta del proyecto dentro del contenedor y corre con `--reload`:
-los cambios en el código se aplican sin reconstruir. El microservicio `rutas` **no** tiene ese
-montaje: si se cambia su código, hay que reconstruirlo (`docker compose up -d --build rutas`).
-
 ## 4. Variables del `.env`
 
 | Variable | Para qué sirve | Obligatoria / valor por defecto |
